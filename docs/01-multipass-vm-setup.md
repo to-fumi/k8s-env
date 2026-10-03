@@ -2,13 +2,13 @@
 
 コマンドはリポジトリのルート（k8s-env/）で実行します。
 
-1. Multipass のインストール
+## 1. Multipass のインストール
 
 ```bash
 brew install --cask multipass
 ```
 
-2. cloud-init ファイルの作成
+## 2. cloud-init ファイルの作成
 
 kubeadm が必須とするカーネル設定を、VM 作成時に3台へ同じように自動適用するためです。br_netfilter・bridge-nf-call は Pod 間のブリッジ通信を iptables（kube-proxy）に通すため、ip_forward はノード間で Pod 通信を転送するため、swap 無効化は kubelet のメモリ管理の前提のために必要です。
 
@@ -34,7 +34,7 @@ runcmd:
 EOF
 ```
 
-3. VM の作成
+## 3. VM の作成
 
 kubeadm は CPU 2 コア・メモリ 2GB 未満だと preflight で失敗するため、全台 2 コア以上にしています。cp は etcd や API サーバーが載るのでメモリを多めにしています。
 
@@ -54,7 +54,7 @@ wait
 multipass list
 ```
 
-4. 起動トラブル時
+## 4. 起動トラブル時
 
 Stopped になった VM は起動し直します。
 
@@ -62,7 +62,7 @@ Stopped になった VM は起動し直します。
 multipass start cp
 ```
 
-5. VM 内のカーネル設定の確認・修正
+## 5. VM 内のカーネル設定の確認・修正
 
 cloud-init はエラーがあっても VM の起動自体は成功するため、設定が実際に反映されたかを確認します。ファイルへの書き込みは再起動後も設定を残すため、modprobe・sysctl は今すぐ反映させるために行います。
 
@@ -105,7 +105,7 @@ lsmod | grep br_netfilter
 exit
 ```
 
-6. /etc/hosts の設定
+## 6. /etc/hosts の設定
 
 Mac 側で3台の IP を確認します。
 
@@ -127,7 +127,7 @@ EOF
 ping -c 2 cp
 ```
 
-7. IP についての注意
+## 7. IP についての注意
 
 Multipass の VM の IP は DHCP で割り当てられ、再起動などで変わることがあります。IP を直接指定すると証明書や設定ファイルに IP が埋め込まれて作り直しが必要になるため、名前で指定しておき IP が変わっても /etc/hosts の修正だけで済むようにします。
 
