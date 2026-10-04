@@ -78,3 +78,8 @@ CRI-O は kubelet より先に動いている必要があるため、enable --no
 sudo systemctl enable --now crio
 sudo systemctl enable kubelet
 ```
+
+## 9. 参考サイト
+
+[Container Runtimes](https://kubernetes.io/docs/setup/production-environment/container-runtimes/)
+[Installing kubeadm](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/)
