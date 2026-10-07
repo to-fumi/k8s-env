@@ -16,8 +16,7 @@ OS は Ubuntu 24.04 です。
 
 1. [Multipass による VM 構築](docs/01-multipass-vm-setup.md)
 2. [コンテナランタイムの導入](docs/02-container-runtime.md)
-3. [kubeadm によるクラスタ初期化](docs/03-kubeadm-init.md)
-4. [ワーカーノードの参加](docs/04-worker-join.md)
+3. [クラスタ構築（kubeadm・Cilium・ワーカー参加）](docs/03-cluster-setup.md)
 
 ## ディレクトリ
 

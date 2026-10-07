@@ -1,4 +1,4 @@
-# kubeadm によるクラスタ初期化と Cilium の導入
+# kubeadm と Cilium によるクラスタ構築
 
 特に記載がない限り cp の VM 内で実行します。
 
