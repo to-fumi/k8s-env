@@ -8,9 +8,11 @@ kubeadm init で API サーバー・etcd・scheduler・controller-manager など
 
 --control-plane-endpoint を付けると、API サーバーの証明書や kubeconfig に IP ではなく名前（cp）が埋め込まれ、VM の IP が変わっても /etc/hosts の修正だけで済みます（01 の「IP についての注意」を参照）。
 
+--skip-phases=addon/kube-proxyはCilium Gateway APIを使用するためskipする
+
 ```bash
 # cp
-sudo kubeadm init
+sudo kubeadm init --skip-phases=addon/kube-proxy
 # sudo kubeadm init --control-plane-endpoint=cp:6443
 ```
 
@@ -54,7 +56,21 @@ ls /etc/cni/net.d/
 # sudo mv /etc/cni/net.d/11-crio-ipv4-bridge.conflist /etc/cni/net.d/11-crio-ipv4-bridge.conflist.disabled
 ```
 
-## 5. Cilium CLI のインストール
+## 5. Cilium Gateway API CRD の導入
+
+Cilium Gateway APIのCRDを入れGateway機能を有効にする
+
+```bash
+kubectl apply --server-side -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.6.3/config/crd/standard/gateway.networking.k8s.io_gatewayclasses.yaml
+kubectl apply --server-side -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.6.3/config/crd/standard/gateway.networking.k8s.io_gateways.yaml
+kubectl apply --server-side -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.6.3/config/crd/standard/gateway.networking.k8s.io_httproutes.yaml
+kubectl apply --server-side -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.6.3/config/crd/standard/gateway.networking.k8s.io_referencegrants.yaml
+kubectl apply --server-side -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.6.3/config/crd/standard/gateway.networking.k8s.io_grpcroutes.yaml
+kubectl apply --server-side -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.6.3/config/crd/standard/gateway.networking.k8s.io_backendtlspolicies.yaml
+kubectl apply --server-side -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.6.3/config/crd/standard/gateway.networking.k8s.io_tlsroutes.yaml
+```
+
+## 6. Cilium CLI のインストール
 
 kubeadm は Pod 間通信の仕組み（CNI プラグイン）を含んでおらず、CNI が入るまでノードは NotReady、CoreDNS は Pending のままになります。CNI として Cilium を使うため、まずインストールや状態確認を行う cilium CLI を入れます。
 
@@ -72,11 +88,21 @@ rm cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
 
 ## 6. Cilium のインストール
 
+Cluster IPとPortを確認する
+
+```bash
+kubectl config view --minify | grep server
+# server: https://xxx.xxx.xxx.x:xxxx
+```
+
 cilium CLI が ~/.kube/config を使ってクラスタに Cilium の DaemonSet や Operator をデプロイします。バージョンを指定しておくことで、手順を再実行したときも同じ構成を再現できます。
 
 ```bash
-cilium install x.xx.x
-# cilium install --version x.xx.x
+cilium install --version x.xx.x \
+  --set kubeProxyReplacement=true \
+  --set k8sServiceHost=<Control PlaneのIP> \
+  --set k8sServicePort=6443 \
+  --set gatewayAPI.enabled=true
 ```
 
 ## 7. インストール状況の確認
@@ -122,4 +148,5 @@ cilium connectivity test
 ## 10. 参考サイト
 
 [Creating a cluster with kubeadm](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/)
+[Prepare Cilium Gateway API](https://docs.cilium.io/en/stable/network/servicemesh/gateway-api/gateway-api/)
 [Installing Cilium CNI](https://docs.cilium.io/en/stable/gettingstarted/k8s-install-default/#create-the-cluster)
