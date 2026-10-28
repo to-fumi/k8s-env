@@ -6,14 +6,17 @@
 
 kubeadm init で API サーバー・etcd・scheduler・controller-manager などのコントロールプレーンを cp 上に立ち上げ、クラスタ内通信に使う証明書や kubeconfig を生成するためです。CRI-O だけがインストールされているため、CRI ソケットは自動で検出されます。
 
---control-plane-endpoint を付けると、API サーバーの証明書や kubeconfig に IP ではなく名前（cp）が埋め込まれ、VM の IP が変わっても /etc/hosts の修正だけで済みます（01 の「IP についての注意」を参照）。
-
---skip-phases=addon/kube-proxyはCilium Gateway APIを使用するためskipする
+--skip-phases=addon/kube-proxy を付けると kube-proxy がデプロイされません。後の手順で Cilium に kube-proxy の役割（Service の通信の振り分け）を置き換えさせ、Cilium の Gateway API を使うためです。
 
 ```bash
 # cp
 sudo kubeadm init --skip-phases=addon/kube-proxy
-# sudo kubeadm init --control-plane-endpoint=cp:6443
+```
+
+--control-plane-endpoint を付けると、API サーバーの証明書や kubeconfig に IP ではなく名前（cp）が埋め込まれ、VM の IP が変わっても /etc/hosts の修正だけで済みます（01 の「IP についての注意」を参照）。使う場合は次のように両方を指定します。
+
+```bash
+# sudo kubeadm init --skip-phases=addon/kube-proxy --control-plane-endpoint=cp:6443
 ```
 
 ## 2. kubectl の設定
@@ -58,7 +61,7 @@ ls /etc/cni/net.d/
 
 ## 5. Cilium Gateway API CRD の導入
 
-Cilium Gateway APIのCRDを入れGateway機能を有効にする
+Cilium の Gateway API 機能は、Gateway や HTTPRoute などのリソース定義（CRD）がクラスタに存在しないと有効になりません。CRD は Cilium には含まれていないため、Cilium をインストールする前に Gateway API 本体の CRD を入れておきます。
 
 ```bash
 kubectl apply --server-side -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.6.3/config/crd/standard/gateway.networking.k8s.io_gatewayclasses.yaml
@@ -72,7 +75,7 @@ kubectl apply --server-side -f https://raw.githubusercontent.com/kubernetes-sigs
 
 ## 6. Cilium CLI のインストール
 
-kubeadm は Pod 間通信の仕組み（CNI プラグイン）を含んでおらず、CNI が入るまでノードは NotReady、CoreDNS は Pending のままになります。CNI として Cilium を使うため、まずインストールや状態確認を行う cilium CLI を入れます。
+kubeadm は Pod 間通信の仕組み（CNI プラグイン）を含んでおらず、CNI が入るまでノードは NotReady、CoreDNS は Pending のままになります。CNI として Cilium を使い、kube-proxy の代わりと Gateway API も Cilium に任せるため、まずインストールや状態確認を行う cilium CLI を入れます。
 
 最新の安定版を取得し、VM の CPU アーキテクチャ（Apple Silicon 上の Multipass なら arm64）に合ったバイナリを選びます。ダウンロードしたファイルが壊れていたり改ざんされていないことを sha256sum で検証してから展開します。
 
@@ -86,26 +89,30 @@ sudo tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
 rm cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
 ```
 
-## 6. Cilium のインストール
+## 7. Cilium のインストール
 
-Cluster IPとPortを確認する
+通常 Pod は kubernetes Service の ClusterIP 経由で API サーバーに接続しますが、kube-proxy を入れていないため、Cilium が起動するまでは ClusterIP への通信が転送されません。そのため、Cilium には API サーバーの実際のアドレスとポートを直接指定する必要があります。kubeconfig に書かれている接続先を確認します。
 
 ```bash
 kubectl config view --minify | grep server
-# server: https://xxx.xxx.xxx.x:xxxx
+# server: https://xxx.xxx.xxx.x:6443
 ```
 
 cilium CLI が ~/.kube/config を使ってクラスタに Cilium の DaemonSet や Operator をデプロイします。バージョンを指定しておくことで、手順を再実行したときも同じ構成を再現できます。
 
+- kubeProxyReplacement=true：kube-proxy の代わりに Cilium が Service の通信を振り分けます
+- k8sServiceHost / k8sServicePort：上で確認した API サーバーの IP とポートを指定します
+- gatewayAPI.enabled=true：5 で入れた CRD を使い、Cilium を Gateway API のコントローラーとして動かします
+
 ```bash
 cilium install --version x.xx.x \
   --set kubeProxyReplacement=true \
-  --set k8sServiceHost=<Control PlaneのIP> \
+  --set k8sServiceHost=<API サーバーの IP> \
   --set k8sServicePort=6443 \
   --set gatewayAPI.enabled=true
 ```
 
-## 7. インストール状況の確認
+## 8. インストール状況の確認
 
 Cilium の Pod が起動しきる前に次の作業に進むと、ノードが NotReady のままだったり Pod 通信が失敗したりするため、--wait で準備完了まで待ちます。
 
@@ -120,7 +127,7 @@ kubectl get nodes
 kubectl get pods -A
 ```
 
-## 8. worker の参加
+## 9. worker の参加
 
 worker1・worker2 をクラスタに参加させるため、3 で控えた kubeadm join コマンドを各 worker の VM 内で実行します。/etc/kubernetes 配下に設定ファイルを書き込むため root 権限が必要です。
 
@@ -137,7 +144,7 @@ worker が参加すると Cilium の DaemonSet が自動で worker にも Pod �
 kubectl get nodes
 ```
 
-## 9. 疎通テスト
+## 10. 疎通テスト
 
 ノードが Ready でも、ノードをまたいだ Pod 間通信や Service、DNS が実際に機能しているとは限らないため、Cilium の接続テストでクラスタのネットワークが正しく動いていることを確かめます。
 
@@ -145,7 +152,7 @@ kubectl get nodes
 cilium connectivity test
 ```
 
-## 10. 参考サイト
+## 11. 参考サイト
 
 [Creating a cluster with kubeadm](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/)
 [Prepare Cilium Gateway API](https://docs.cilium.io/en/stable/network/servicemesh/gateway-api/gateway-api/)
